@@ -17,7 +17,7 @@
 #include "CryptoNoteCore/Currency.h"
 #include "P2p/LevinProtocol.h"
 
-#include <Common/FormatTools.h>
+#include <Utilities/FormatTools.h>
 
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
@@ -274,7 +274,7 @@ bool CryptoNoteProtocolHandler::process_payload_sync_data(const CORE_SYNC_DATA& 
     /* We're behind the remote node */
     if (diff >= 0)
     {
-        ss << "(" << Common::get_sync_percentage(currentHeight, remoteHeight)
+        ss << "(" << Utilities::get_sync_percentage(currentHeight, remoteHeight)
           << "% complete) ";
 
         ss << "You are " << diff << " blocks (" << days << " days) behind ";
@@ -813,7 +813,7 @@ int CryptoNoteProtocolHandler::handle_notify_missing_txs(int command, NOTIFY_MIS
   std::vector<Crypto::Hash> missedHashes;
   m_core.getTransactions(arg.missing_txs, txs, missedHashes);
   if (!missedHashes.empty()) {
-    logger(Logging::ERROR) << "Failed to Handle NOTIFY_MISSING_TXS, Unable to retrieve requested transactions, Dropping Connection";
+    logger(Logging::DEBUGGING) << "Failed to Handle NOTIFY_MISSING_TXS, Unable to retrieve requested transactions, Dropping Connection";
     context.m_state = CryptoNoteConnectionContext::state_shutdown;
     return 1;
   }

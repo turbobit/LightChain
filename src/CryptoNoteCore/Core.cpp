@@ -5,33 +5,39 @@
 // Please see the included LICENSE file for more information.
 
 #include <algorithm>
-#include <numeric>
-#include <set>
-#include <unordered_set>
 
-#include "Core.h"
-#include "Common/FormatTools.h"
-#include "Common/ShuffleGenerator.h"
-#include "Common/Math.h"
-#include "Common/MemoryInputStream.h"
-#include "CryptoNoteTools.h"
-#include "CryptoNoteFormatUtils.h"
-#include "BlockchainCache.h"
-#include "BlockchainStorage.h"
-#include "BlockchainUtils.h"
-#include "CryptoNoteCore/ITimeProvider.h"
-#include "CryptoNoteCore/CoreErrors.h"
-#include "CryptoNoteCore/MemoryBlockchainStorage.h"
-#include "CryptoNoteCore/TransactionExtra.h"
-#include "CryptoNoteCore/TransactionPool.h"
-#include "CryptoNoteCore/TransactionPoolCleaner.h"
-#include "CryptoNoteCore/UpgradeManager.h"
-#include "CryptoNoteCore/Mixins.h"
-#include "CryptoNoteProtocol/CryptoNoteProtocolHandlerCommon.h"
+#include <numeric>
+
+#include <Common/ShuffleGenerator.h>
+#include <Common/Math.h>
+#include <Common/MemoryInputStream.h>
+
+#include <CryptoNoteCore/BlockchainCache.h>
+#include <CryptoNoteCore/BlockchainStorage.h>
+#include <CryptoNoteCore/BlockchainUtils.h>
+#include <CryptoNoteCore/Core.h>
+#include <CryptoNoteCore/CoreErrors.h>
+#include <CryptoNoteCore/CryptoNoteFormatUtils.h>
+#include <CryptoNoteCore/CryptoNoteTools.h>
+#include <CryptoNoteCore/ITimeProvider.h>
+#include <CryptoNoteCore/MemoryBlockchainStorage.h>
+#include <CryptoNoteCore/Mixins.h>
+#include <CryptoNoteCore/TransactionApi.h>
+#include <CryptoNoteCore/TransactionExtra.h>
+#include <CryptoNoteCore/TransactionPool.h>
+#include <CryptoNoteCore/TransactionPoolCleaner.h>
+#include <CryptoNoteCore/UpgradeManager.h>
+
+#include <CryptoNoteProtocol/CryptoNoteProtocolHandlerCommon.h>
+
+#include <set>
 
 #include <System/Timer.h>
 
-#include "TransactionApi.h"
+#include <Utilities/FormatTools.h>
+#include <Utilities/LicenseCanary.h>
+
+#include <unordered_set>
 
 #include <WalletTypes.h>
 
@@ -193,6 +199,7 @@ Core::Core(const Currency& currency, std::shared_ptr<Logging::ILogger> logger, C
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_2, currency.upgradeHeight(BLOCK_MAJOR_VERSION_2));
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_3, currency.upgradeHeight(BLOCK_MAJOR_VERSION_3));
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_4, currency.upgradeHeight(BLOCK_MAJOR_VERSION_4));
+  upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_5, currency.upgradeHeight(BLOCK_MAJOR_VERSION_5));
 
   transactionPool = std::unique_ptr<ITransactionPoolCleanWrapper>(new TransactionPoolCleanWrapper(
     std::unique_ptr<ITransactionPool>(new TransactionPool(logger)),
@@ -535,39 +542,24 @@ bool Core::getTransactionsStatus(
         /* Pop into a set for quicker .find() */
         std::unordered_set<Crypto::Hash> poolTransactions(txs.begin(), txs.end());
 
-        /* Loop through the inputted hashes */
-        for (auto it = transactionHashes.begin(); it != transactionHashes.end();)
+        for (const auto hash : transactionHashes)
         {
-            /* Transaction exists in the pool */
-            if (poolTransactions.find(*it) != poolTransactions.end())
+            if (poolTransactions.find(hash) != poolTransactions.end())
             {
-                transactionsInPool.insert(*it);
-
-                /* We have processed this transaction, remove it from the
-                   container, and update the iterators */
-                it = transactionHashes.erase(it);
+                /* It's in the pool */
+                transactionsInPool.insert(hash);
+            }
+            else if (findSegmentContainingTransaction(hash) != nullptr)
+            {
+                /* It's in a block */
+                transactionsInBlock.insert(hash);
             }
             else
             {
-                ++it;
+                /* We don't know anything about it */
+                transactionsUnknown.insert(hash);
             }
         }
-
-        for (auto it = transactionHashes.begin(); it != transactionHashes.end();)
-        {
-            /* The transaction is present in a block */
-            if (findSegmentContainingTransaction(*it) != nullptr)
-            {
-                transactionsInBlock.insert(*it);
-
-                /* We have processed this transaction, remove it from the container
-                   and update the iterators */
-                it = transactionHashes.erase(it);
-            }
-        }
-
-        /* Anything remaining, the daemon does not know about. */
-        transactionsUnknown = transactionHashes;
 
         return true;
     }
@@ -596,7 +588,15 @@ bool Core::getWalletSyncData(
         /* Current height */
         uint64_t currentIndex = mainChain->getTopBlockIndex();
 
-        const auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
+        auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
+
+        /* If no timestamp given, occasionaly the daemon returns a non zero
+           block height... for some reason. Set it back to zero if we didn't
+           give a timestamp to fix this. */
+        if (startTimestamp == 0)
+        {
+            timestampBlockHeight = 0;
+        }
 
         /* If we couldn't get the first block timestamp, then the node is
            synced less than the current height, so return no blocks till we're
@@ -610,20 +610,17 @@ bool Core::getWalletSyncData(
            to a block */
         uint64_t firstBlockHeight = startHeight == 0 ? timestampBlockHeight : startHeight;
 
+        /* The height of the last block we know about */
+        uint64_t lastKnownBlockHashHeight = static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes));
+
         /* Start returning either from the start height, or the height of the
            last block we know about, whichever is higher */
         uint64_t startIndex = std::max(
-            /* Plus one so we return the next block */
-            static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes)) + 1,
+            /* Plus one so we return the next block - default to zero if it's zero,
+               otherwise genesis block will be skipped. */
+            lastKnownBlockHashHeight == 0 ? 0 : lastKnownBlockHashHeight + 1,
             firstBlockHeight
         );
-
-        /* If we're fully synced, then the start index will be greater than our
-           current block. */
-        if (currentIndex < startIndex)
-        {
-            return true;
-        }
 
         /* Difference between the start and end */
         uint64_t blockDifference = currentIndex - startIndex;
@@ -634,6 +631,31 @@ bool Core::getWalletSyncData(
             static_cast<uint64_t>(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT),
             blockDifference + 1
         ) + startIndex;
+
+        /* MAYBE THE DAMN THING CAN WORK */
+        logger(Logging::DEBUGGING)
+            << "\n\n"
+            << "\n============================================="
+            << "\n========= GetWalletSyncData summary ========="
+            << "\n* Known block hashes size: " << knownBlockHashes.size()
+            << "\n* Start height: " << startHeight
+            << "\n* Start timestamp: " << startTimestamp
+            << "\n* Current index: " << currentIndex
+            << "\n* Timestamp block height: " << timestampBlockHeight
+            << "\n* First block height: " << firstBlockHeight
+            << "\n* Last known block hash height: " << lastKnownBlockHashHeight
+            << "\n* Start index: " << startIndex
+            << "\n* Block difference: " << blockDifference
+            << "\n* End index: " << endIndex
+            << "\n============================================="
+            << "\n\n\n";
+
+        /* If we're fully synced, then the start index will be greater than our
+           current block. */
+        if (currentIndex < startIndex)
+        {
+            return true;
+        }
 
         std::vector<RawBlock> rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
 
@@ -1300,7 +1322,7 @@ bool Core::getRandomOutputs(uint64_t amount, uint16_t count, std::vector<uint32_
   globalIndexes = chainsLeaves[0]->getRandomOutsByAmount(amount, count, getTopBlockIndex());
   if (globalIndexes.empty()) {
     logger(Logging::ERROR) << "Failed to get any matching outputs for amount "
-                           << amount << " (" << Common::formatAmount(amount)
+                           << amount << " (" << Utilities::formatAmount(amount)
                            << "). Further explanation here: "
                            << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c\n"
                            << "Note: If you are a public node operator, you can safely ignore this message. "

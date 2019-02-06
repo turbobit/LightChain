@@ -14,6 +14,8 @@
 #include <cryptopp/sha.h>
 #include <cryptopp/pwdbased.h>
 
+#include <Errors/ValidateParameters.h>
+
 #include <iomanip>
 
 #include <iostream>
@@ -23,7 +25,6 @@
 #include <WalletApi/Constants.h>
 
 #include <WalletBackend/JsonSerialization.h>
-#include <WalletBackend/ValidateParameters.h>
 
 using namespace httplib;
 
@@ -172,12 +173,12 @@ ApiDispatcher::ApiDispatcher(
             .Get("/transactions/\\d+/\\d+", router(&ApiDispatcher::getTransactionsFromHeightToHeight, walletMustBeOpen, viewWalletsAllowed))
 
             /* Get the transactions starting at the given block, for 1000 blocks, belonging to the given address */
-            .Get("/transactions/" + ApiConstants::addressRegex + "/\\d+", router(
+            .Get("/transactions/address/" + ApiConstants::addressRegex + "/\\d+", router(
                 &ApiDispatcher::getTransactionsFromHeightWithAddress, walletMustBeOpen, viewWalletsAllowed)
             )
 
             /* Get the transactions starting at the given block, and ending at the given block, belonging to the given address */
-            .Get("/transactions/" + ApiConstants::addressRegex + "/\\d+/\\d+", router(
+            .Get("/transactions/address/" + ApiConstants::addressRegex + "/\\d+/\\d+", router(
                 &ApiDispatcher::getTransactionsFromHeightToHeightWithAddress, walletMustBeOpen, viewWalletsAllowed)
             )
 
@@ -187,7 +188,7 @@ ApiDispatcher::ApiDispatcher(
             )
 
             /* Get details for the given transaction hash, if known */
-            .Get("/transactions/" + ApiConstants::hashRegex, router(&ApiDispatcher::getTransactionDetails, walletMustBeOpen, viewWalletsAllowed))
+            .Get("/transactions/hash/" + ApiConstants::hashRegex, router(&ApiDispatcher::getTransactionDetails, walletMustBeOpen, viewWalletsAllowed))
 
             /* Get balance for the wallet */
             .Get("/balance", router(&ApiDispatcher::getBalance, walletMustBeOpen, viewWalletsAllowed))
@@ -199,7 +200,7 @@ ApiDispatcher::ApiDispatcher(
 
             /* Matches everything */
             /* NOTE: Not passing through middleware */
-            .Options(".*", [this](auto req, auto res) { handleOptions(req, res); });
+            .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
 }
 
 void ApiDispatcher::start()
@@ -217,7 +218,7 @@ void ApiDispatcher::middleware(
     Response &res,
     const bool walletMustBeOpen,
     const bool viewWalletPermitted,
-    std::function<std::tuple<WalletError, uint16_t>
+    std::function<std::tuple<Error, uint16_t>
         (const Request &req,
          Response &res,
          const nlohmann::json &body)> handler)
@@ -231,9 +232,17 @@ void ApiDispatcher::middleware(
         body = json::parse(req.body);
         std::cout << "Body:\n" << std::setw(4) << body << std::endl;
     }
+    /* Not neccessarily an error if body isn't needed */
     catch (const json::exception &)
     {
-        /* Not neccessarily an error if body isn't needed */
+        /* Body given, but failed to parse as JSON. Probably a mistake on
+           the clients side, but lets report it to help them out. */
+        if (!req.body.empty())
+        {
+            std::cout << "Warning: received body is not JSON encoded!\n"
+                      << "Key/value parameters are NOT supported.\n"
+                      << "Body:\n" << req.body << std::endl;
+        }
     }
 
     /* Add the cors header if not empty string */
@@ -267,7 +276,7 @@ void ApiDispatcher::middleware(
        /* Bad request */
        res.status = 400;
 
-       WalletError error = ILLEGAL_VIEW_WALLET_OPERATION;
+       Error error = ILLEGAL_VIEW_WALLET_OPERATION;
 
        nlohmann::json j {
             {"errorCode", error.getErrorCode()},
@@ -348,7 +357,7 @@ bool ApiDispatcher::checkAuthenticated(const Request &req, Response &res) const
 /* POST REQUESTS */
 ///////////////////
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::openWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::openWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -357,7 +366,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::openWallet(
 
     const auto [daemonHost, daemonPort, filename, password] = getDefaultWalletParams(body);
 
-    WalletError error;
+    Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::openWallet(
         filename, password, daemonHost, daemonPort
@@ -366,7 +375,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::openWallet(
     return {error, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::keyImportWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::keyImportWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -375,17 +384,17 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::keyImportWallet(
 
     const auto [daemonHost, daemonPort, filename, password] = getDefaultWalletParams(body);
 
-    Crypto::SecretKey privateViewKey = body.at("privateViewKey").get<Crypto::SecretKey>();
-    Crypto::SecretKey privateSpendKey = body.at("privateSpendKey").get<Crypto::SecretKey>();
+    const auto privateViewKey = tryGetJsonValue<Crypto::SecretKey>(body, "privateViewKey");
+    const auto privateSpendKey = tryGetJsonValue<Crypto::SecretKey>(body, "privateSpendKey");
 
     uint64_t scanHeight = 0;
 
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
-    WalletError error;
+    Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::importWalletFromKeys(
         privateSpendKey, privateViewKey, filename, password, scanHeight,
@@ -395,7 +404,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::keyImportWallet(
     return {error, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::seedImportWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::seedImportWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -404,16 +413,16 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::seedImportWallet(
 
     const auto [daemonHost, daemonPort, filename, password] = getDefaultWalletParams(body);
 
-    std::string mnemonicSeed = body.at("mnemonicSeed").get<std::string>();
+    const std::string mnemonicSeed = tryGetJsonValue<std::string>(body, "mnemonicSeed");
 
     uint64_t scanHeight = 0;
 
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
-    WalletError error;
+    Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::importWalletFromSeed(
         mnemonicSeed, filename, password, scanHeight, daemonHost, daemonPort
@@ -422,7 +431,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::seedImportWallet(
     return {error, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::importViewWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::importViewWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -431,17 +440,17 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importViewWallet(
 
     const auto [daemonHost, daemonPort, filename, password] = getDefaultWalletParams(body);
 
-    std::string address = body.at("address").get<std::string>();
-    Crypto::SecretKey privateViewKey = body.at("privateViewKey").get<Crypto::SecretKey>();
+    const std::string address = tryGetJsonValue<std::string>(body, "address");
+    const auto privateViewKey = tryGetJsonValue<Crypto::SecretKey>(body, "privateViewKey");
 
     uint64_t scanHeight = 0;
 
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
-    WalletError error;
+    Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::importViewWallet(
         privateViewKey, address, filename, password, scanHeight,
@@ -451,7 +460,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importViewWallet(
     return {error, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::createWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::createWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -460,7 +469,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::createWallet(
 
     const auto [daemonHost, daemonPort, filename, password] = getDefaultWalletParams(body);
 
-    WalletError error;
+    Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::createWallet(
         filename, password, daemonHost, daemonPort
@@ -469,7 +478,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::createWallet(
     return {error, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::createAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::createAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -485,7 +494,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::createAddress(
     return {SUCCESS, 201};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::importAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::importAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -496,10 +505,10 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importAddress(
        begin again from zero if none is given */
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
-    Crypto::SecretKey privateSpendKey = body.at("privateSpendKey").get<Crypto::SecretKey>();
+    const auto privateSpendKey = tryGetJsonValue<Crypto::SecretKey>(body, "privateSpendKey");
 
     const auto [error, address] = m_walletBackend->importSubWallet(
         privateSpendKey, scanHeight
@@ -519,7 +528,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importAddress(
     return {SUCCESS, 201};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::importViewAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::importViewAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -530,10 +539,10 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importViewAddress(
        begin again from zero if none is given */
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
-    Crypto::PublicKey publicSpendKey = body.at("publicSpendKey").get<Crypto::PublicKey>();
+    const auto publicSpendKey = tryGetJsonValue<Crypto::PublicKey>(body, "publicSpendKey");
 
     const auto [error, address] = m_walletBackend->importViewSubWallet(
         publicSpendKey, scanHeight
@@ -553,20 +562,20 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::importViewAddress(
     return {SUCCESS, 201};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::sendBasicTransaction(
+std::tuple<Error, uint16_t> ApiDispatcher::sendBasicTransaction(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
 {
-    std::string address = body.at("destination").get<std::string>();
+    const std::string address = tryGetJsonValue<std::string>(body, "destination");
 
-    uint64_t amount = body.at("amount").get<uint64_t>();
+    const uint64_t amount = tryGetJsonValue<uint64_t>(body, "amount");
 
     std::string paymentID;
 
     if (body.find("paymentID") != body.end())
     {
-        paymentID = body.at("paymentID").get<std::string>();
+        paymentID = tryGetJsonValue<std::string>(body, "paymentID");
     }
 
     auto [error, hash] = m_walletBackend->sendTransactionBasic(
@@ -587,18 +596,27 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendBasicTransaction(
     return {SUCCESS, 201};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedTransaction(
+std::tuple<Error, uint16_t> ApiDispatcher::sendAdvancedTransaction(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
 {
-    auto destinations = body.at("destinations").get<std::vector<std::pair<std::string, uint64_t>>>();
+    const json destinationsJSON = tryGetJsonValue<json>(body, "destinations");
+
+    std::vector<std::pair<std::string, uint64_t>> destinations;
+
+    for (const auto destination : destinationsJSON)
+    {
+        const std::string address = tryGetJsonValue<std::string>(destination, "address");
+        const uint64_t amount = tryGetJsonValue<uint64_t>(destination, "amount");
+        destinations.emplace_back(address, amount);
+    }
 
     uint64_t mixin;
 
     if (body.find("mixin") != body.end())
     {
-        mixin = body.at("mixin").get<uint64_t>();
+        mixin = tryGetJsonValue<uint64_t>(body, "mixin");
     }
     else
     {
@@ -612,28 +630,28 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedTransaction(
 
     if (body.find("fee") != body.end())
     {
-        fee = body.at("fee").get<uint64_t>();
+        fee = tryGetJsonValue<uint64_t>(body, "fee");
     }
 
     std::vector<std::string> subWalletsToTakeFrom = {};
 
     if (body.find("sourceAddresses") != body.end())
     {
-        subWalletsToTakeFrom = body.at("sourceAddresses").get<std::vector<std::string>>();
+        subWalletsToTakeFrom = tryGetJsonValue<std::vector<std::string>>(body, "sourceAddresses");
     }
 
     std::string paymentID;
 
     if (body.find("paymentID") != body.end())
     {
-        paymentID = body.at("paymentID").get<std::string>();
+        paymentID = tryGetJsonValue<std::string>(body, "paymentID");
     }
 
     std::string changeAddress;
 
     if (body.find("changeAddress") != body.end())
     {
-        changeAddress = body.at("changeAddress").get<std::string>();
+        changeAddress = tryGetJsonValue<std::string>(body, "changeAddress");
     }
 
     auto [error, hash] = m_walletBackend->sendTransactionAdvanced(
@@ -654,7 +672,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedTransaction(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::sendBasicFusionTransaction(
+std::tuple<Error, uint16_t> ApiDispatcher::sendBasicFusionTransaction(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -675,18 +693,18 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendBasicFusionTransaction(
     return {SUCCESS, 201};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedFusionTransaction(
+std::tuple<Error, uint16_t> ApiDispatcher::sendAdvancedFusionTransaction(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
 {
-    std::string destination = body.at("destination").get<std::string>();
+    const std::string destination = tryGetJsonValue<std::string>(body, "destination");
 
     uint64_t mixin;
 
     if (body.find("mixin") != body.end())
     {
-        mixin = body.at("mixin").get<uint64_t>();
+        mixin = tryGetJsonValue<uint64_t>(body, "mixin");
     }
     else
     {
@@ -696,11 +714,11 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedFusionTransaction(
         );
     }
 
-    std::vector<std::string> subWalletsToTakeFrom = {};
+    std::vector<std::string> subWalletsToTakeFrom;
 
     if (body.find("sourceAddresses") != body.end())
     {
-        subWalletsToTakeFrom = body.at("sourceAddresses").get<std::vector<std::string>>();
+        subWalletsToTakeFrom = tryGetJsonValue<std::vector<std::string>>(body, "sourceAddresses");
     }
 
     auto [error, hash] = m_walletBackend->sendFusionTransactionAdvanced(
@@ -725,7 +743,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::sendAdvancedFusionTransaction(
 /* DELETE REQUESTS */
 /////////////////////
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::closeWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::closeWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -737,7 +755,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::closeWallet(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::deleteAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::deleteAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -745,12 +763,12 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::deleteAddress(
     /* Remove the addresses prefix to get the address */
     std::string address = req.path.substr(std::string("/addresses/").size());
 
-    if (WalletError error = validateAddresses({address}, false); error != SUCCESS)
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
     {
         return {error, 400};
     }
 
-    WalletError error = m_walletBackend->deleteSubWallet(address);
+    Error error = m_walletBackend->deleteSubWallet(address);
 
     if (error)
     {
@@ -764,7 +782,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::deleteAddress(
 /* PUT REQUESTS */
 //////////////////
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::saveWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::saveWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -776,7 +794,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::saveWallet(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::resetWallet(
+std::tuple<Error, uint16_t> ApiDispatcher::resetWallet(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
@@ -788,7 +806,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::resetWallet(
 
     if (body.find("scanHeight") != body.end())
     {
-        scanHeight = body.at("scanHeight").get<uint64_t>();
+        scanHeight = tryGetJsonValue<uint64_t>(body, "scanHeight");
     }
 
     m_walletBackend->reset(scanHeight, timestamp);
@@ -796,15 +814,15 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::resetWallet(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::setNodeInfo(
+std::tuple<Error, uint16_t> ApiDispatcher::setNodeInfo(
     const Request &req,
     Response &res,
     const nlohmann::json &body)
 {
     std::scoped_lock lock(m_mutex);
 
-    std::string daemonHost = body.at("daemonHost").get<std::string>();
-    uint16_t daemonPort = body.at("daemonPort").get<uint16_t>();
+    const std::string daemonHost = tryGetJsonValue<std::string>(body, "daemonHost");
+    const uint16_t daemonPort = tryGetJsonValue<uint16_t>(body, "daemonPort");
 
     m_walletBackend->swapNode(daemonHost, daemonPort);
 
@@ -815,7 +833,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::setNodeInfo(
 /* GET REQUESTS */
 //////////////////
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getNodeInfo(
+std::tuple<Error, uint16_t> ApiDispatcher::getNodeInfo(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -836,7 +854,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getNodeInfo(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getPrivateViewKey(
+std::tuple<Error, uint16_t> ApiDispatcher::getPrivateViewKey(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -851,7 +869,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getPrivateViewKey(
 }
 
 /* Gets the spend keys for the given address */
-std::tuple<WalletError, uint16_t> ApiDispatcher::getSpendKeys(
+std::tuple<Error, uint16_t> ApiDispatcher::getSpendKeys(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -859,7 +877,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getSpendKeys(
     /* Remove the keys prefix to get the address */
     std::string address = req.path.substr(std::string("/keys/").size());
 
-    if (WalletError error = validateAddresses({address}, false); error != SUCCESS)
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
     {
         return {error, 400};
     }
@@ -882,7 +900,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getSpendKeys(
 }
 
 /* Gets the mnemonic seed for the given address (if possible) */
-std::tuple<WalletError, uint16_t> ApiDispatcher::getMnemonicSeed(
+std::tuple<Error, uint16_t> ApiDispatcher::getMnemonicSeed(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -890,7 +908,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getMnemonicSeed(
     /* Remove the keys prefix to get the address */
     std::string address = req.path.substr(std::string("/keys/mnemonic/").size());
 
-    if (WalletError error = validateAddresses({address}, false); error != SUCCESS)
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
     {
         return {error, 400};
     }
@@ -911,7 +929,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getMnemonicSeed(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getStatus(
+std::tuple<Error, uint16_t> ApiDispatcher::getStatus(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -932,7 +950,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getStatus(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getAddresses(
+std::tuple<Error, uint16_t> ApiDispatcher::getAddresses(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -946,7 +964,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getAddresses(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getPrimaryAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::getPrimaryAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -960,7 +978,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getPrimaryAddress(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::createIntegratedAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::createIntegratedAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -990,7 +1008,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::createIntegratedAddress(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactions(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactions(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -1006,7 +1024,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactions(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getUnconfirmedTransactions(
+std::tuple<Error, uint16_t> ApiDispatcher::getUnconfirmedTransactions(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -1022,7 +1040,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getUnconfirmedTransactions(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getUnconfirmedTransactionsForAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::getUnconfirmedTransactionsForAddress(
     const Request &req,
     Response &res,
     const nlohmann::json &body) const
@@ -1061,7 +1079,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getUnconfirmedTransactionsForAd
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeight(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsFromHeight(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
@@ -1093,7 +1111,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeight(
     }
 }
             
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeight(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeight(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
@@ -1141,18 +1159,18 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeig
     }
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightWithAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsFromHeightWithAddress(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
 {
-    std::string stripped = req.path.substr(std::string("/transactions/").size());
+    std::string stripped = req.path.substr(std::string("/transactions/address/").size());
 
     uint64_t splitPos = stripped.find_first_of("/");
 
     std::string address = stripped.substr(0, splitPos);
 
-    if (WalletError error = validateAddresses({address}, false); error != SUCCESS)
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
     {
         return {error, 400};
     }
@@ -1204,18 +1222,18 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightWithAd
     }
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeightWithAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeightWithAddress(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
 {
-    std::string stripped = req.path.substr(std::string("/transactions/").size());
+    std::string stripped = req.path.substr(std::string("/transactions/address/").size());
 
     uint64_t splitPos = stripped.find_first_of("/");
 
     std::string address = stripped.substr(0, splitPos);
 
-    if (WalletError error = validateAddresses({address}, false); error != SUCCESS)
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
     {
         return {error, 400};
     }
@@ -1282,12 +1300,12 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionsFromHeightToHeig
     }
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionDetails(
+std::tuple<Error, uint16_t> ApiDispatcher::getTransactionDetails(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
 {
-    std::string hashStr = req.path.substr(std::string("/transactions/").size());
+    std::string hashStr = req.path.substr(std::string("/transactions/hash/").size());
 
     Crypto::Hash hash;
 
@@ -1311,7 +1329,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getTransactionDetails(
     return {SUCCESS, 404};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getBalance(
+std::tuple<Error, uint16_t> ApiDispatcher::getBalance(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
@@ -1328,7 +1346,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getBalance(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getBalanceForAddress(
+std::tuple<Error, uint16_t> ApiDispatcher::getBalanceForAddress(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
@@ -1352,7 +1370,7 @@ std::tuple<WalletError, uint16_t> ApiDispatcher::getBalanceForAddress(
     return {SUCCESS, 200};
 }
 
-std::tuple<WalletError, uint16_t> ApiDispatcher::getTxPrivateKey(
+std::tuple<Error, uint16_t> ApiDispatcher::getTxPrivateKey(
     const httplib::Request &req,
     httplib::Response &res,
     const nlohmann::json &body) const
@@ -1387,6 +1405,8 @@ void ApiDispatcher::handleOptions(
     const Request &req,
     Response &res) const
 {
+    std::cout << "Incoming " << req.method << " request: " << req.path << std::endl;
+
     std::string supported = "OPTIONS, GET, POST, PUT, DELETE";
 
     if (m_corsHeader == "")
@@ -1407,6 +1427,8 @@ void ApiDispatcher::handleOptions(
     if (m_corsHeader != "")
     {
         res.set_header("Access-Control-Allow-Origin", m_corsHeader);
+        res.set_header("Access-Control-Allow-Headers",
+                       "Origin, X-Requested-With, Content-Type, Accept, X-API-KEY");
     }
 
     res.status = 200;
@@ -1418,17 +1440,17 @@ std::tuple<std::string, uint16_t, std::string, std::string>
     std::string daemonHost = "127.0.0.1";
     uint16_t daemonPort = CryptoNote::RPC_DEFAULT_PORT;
 
-    std::string filename = body.at("filename").get<std::string>();
-    std::string password = body.at("password").get<std::string>();
+    const std::string filename = tryGetJsonValue<std::string>(body, "filename"); 
+    const std::string password = tryGetJsonValue<std::string>(body, "password");
 
     if (body.find("daemonHost") != body.end())
     {
-        daemonHost = body.at("daemonHost").get<std::string>();
+        daemonHost = tryGetJsonValue<std::string>(body, "daemonHost");
     }
 
     if (body.find("daemonPort") != body.end())
     {
-        daemonPort = body.at("daemonPort").get<uint16_t>();
+        daemonPort = tryGetJsonValue<uint16_t>(body, "daemonPort");
     }
 
     return {daemonHost, daemonPort, filename, password};
