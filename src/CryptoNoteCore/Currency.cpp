@@ -166,12 +166,30 @@ uint32_t Currency::upgradeHeight(uint8_t majorVersion) const {
   }
 }
 
-bool Currency::getBlockReward(uint8_t blockMajorVersion, size_t medianSize, size_t currentBlockSize, uint64_t alreadyGeneratedCoins,
-  uint64_t fee, uint64_t& reward, int64_t& emissionChange) const {
+bool Currency::getBlockReward(
+    const uint8_t blockMajorVersion,
+    size_t medianSize,
+    const size_t currentBlockSize,
+    const uint64_t alreadyGeneratedCoins,
+    const uint64_t fee,
+    const uint64_t blockHeight,
+    uint64_t& reward,
+    int64_t& emissionChange) const
+{
   assert(alreadyGeneratedCoins <= m_moneySupply);
-  assert(m_emissionSpeedFactor > 0 && m_emissionSpeedFactor <= 8 * sizeof(uint64_t));
 
-  uint64_t baseReward = (m_moneySupply - alreadyGeneratedCoins) >> m_emissionSpeedFactor;
+  uint32_t emission;
+
+  if (blockHeight >= CryptoNote::parameters::EMISSION_SPEED_FACTOR_V2_HEIGHT)
+  {
+      emission = CryptoNote::parameters::EMISSION_SPEED_FACTOR_V2;
+  }
+  else
+  {
+      emission = CryptoNote::parameters::EMISSION_SPEED_FACTOR;
+  }
+
+  uint64_t baseReward = (m_moneySupply - alreadyGeneratedCoins) >> emission;
   if (alreadyGeneratedCoins == 0 && m_genesisBlockReward != 0) {
     baseReward = m_genesisBlockReward;
   }
@@ -220,7 +238,7 @@ bool Currency::constructMinerTx(uint8_t blockMajorVersion, uint32_t height, size
 
   uint64_t blockReward;
   int64_t emissionChange;
-  if (!getBlockReward(blockMajorVersion, medianSize, currentBlockSize, alreadyGeneratedCoins, fee, blockReward, emissionChange)) {
+  if (!getBlockReward(blockMajorVersion, medianSize, currentBlockSize, alreadyGeneratedCoins, fee, height, blockReward, emissionChange)) {
     logger(INFO) << "Block is too big";
     return false;
   }
@@ -663,7 +681,6 @@ m_minedMoneyUnlockWindow(currency.m_minedMoneyUnlockWindow),
 m_timestampCheckWindow(currency.m_timestampCheckWindow),
 m_blockFutureTimeLimit(currency.m_blockFutureTimeLimit),
 m_moneySupply(currency.m_moneySupply),
-m_emissionSpeedFactor(currency.m_emissionSpeedFactor),
 m_rewardBlocksWindow(currency.m_rewardBlocksWindow),
 m_blockGrantedFullRewardZone(currency.m_blockGrantedFullRewardZone),
 m_isBlockexplorer(currency.m_isBlockexplorer),
@@ -717,7 +734,6 @@ CurrencyBuilder::CurrencyBuilder(std::shared_ptr<Logging::ILogger> log) : m_curr
   blockFutureTimeLimit(parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT);
 
   moneySupply(parameters::MONEY_SUPPLY);
-  emissionSpeedFactor(parameters::EMISSION_SPEED_FACTOR);
 genesisBlockReward(parameters::GENESIS_BLOCK_REWARD);
 
   rewardBlocksWindow(parameters::CRYPTONOTE_REWARD_BLOCKS_WINDOW);
@@ -809,14 +825,6 @@ Transaction CurrencyBuilder::generateGenesisTransaction() {
       tx.outputs.push_back(out);
     }
     return tx;
-}
-CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
-  if (val <= 0 || val > 8 * sizeof(uint64_t)) {
-    throw std::invalid_argument("val at emissionSpeedFactor()");
-  }
-
-  m_currency.m_emissionSpeedFactor = val;
-  return *this;
 }
 
 CurrencyBuilder& CurrencyBuilder::numberOfDecimalPlaces(size_t val) {

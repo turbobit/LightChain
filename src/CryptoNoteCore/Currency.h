@@ -57,7 +57,6 @@ public:
   }
 
   uint64_t moneySupply() const { return m_moneySupply; }
-  unsigned int emissionSpeedFactor() const { return m_emissionSpeedFactor; }
   uint64_t genesisBlockReward() const { return m_genesisBlockReward; }
 
   size_t rewardBlocksWindow() const { return m_rewardBlocksWindow; }
@@ -132,8 +131,16 @@ size_t difficultyBlocksCountByBlockVersion(uint8_t blockMajorVersion, uint32_t h
   const BlockTemplate& genesisBlock() const { return cachedGenesisBlock->getBlock(); }
   const Crypto::Hash& genesisBlockHash() const { return cachedGenesisBlock->getBlockHash(); }
 
-  bool getBlockReward(uint8_t blockMajorVersion, size_t medianSize, size_t currentBlockSize, uint64_t alreadyGeneratedCoins, uint64_t fee,
-    uint64_t& reward, int64_t& emissionChange) const;
+  bool getBlockReward(
+    const uint8_t blockMajorVersion,
+    const size_t medianSize,
+    const size_t currentBlockSize,
+    const uint64_t alreadyGeneratedCoins,
+    const uint64_t fee,
+    const uint64_t blockHeight,
+    uint64_t& reward,
+    int64_t& emissionChange) const;
+
   size_t maxBlockCumulativeSize(uint64_t height) const;
 
   bool constructMinerTx(uint8_t blockMajorVersion, uint32_t height, size_t medianSize, uint64_t alreadyGeneratedCoins, size_t currentBlockSize,
@@ -186,7 +193,6 @@ private:
   uint64_t m_blockFutureTimeLimit;
 
   uint64_t m_moneySupply;
-  unsigned int m_emissionSpeedFactor;
   uint64_t m_genesisBlockReward;
 
   size_t m_rewardBlocksWindow;
@@ -271,7 +277,6 @@ public:
   CurrencyBuilder& blockFutureTimeLimit(uint64_t val) { m_currency.m_blockFutureTimeLimit = val; return *this; }
 
   CurrencyBuilder& moneySupply(uint64_t val) { m_currency.m_moneySupply = val; return *this; }
-  CurrencyBuilder& emissionSpeedFactor(unsigned int val);
   CurrencyBuilder& genesisBlockReward(uint64_t val) { m_currency.m_genesisBlockReward = val; return *this; }
 
   CurrencyBuilder& rewardBlocksWindow(size_t val) { m_currency.m_rewardBlocksWindow = val; return *this; }

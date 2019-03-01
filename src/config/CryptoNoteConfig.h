@@ -43,7 +43,13 @@ const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V3              = 6;
 const uint64_t LWMA_3_DIFFICULTY_BLOCK_INDEX                 = 999999999;
 
 const unsigned EMISSION_SPEED_FACTOR                         = 20;
-static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
+const unsigned EMISSION_SPEED_FACTOR_V2                      = 22;
+
+static_assert(EMISSION_SPEED_FACTOR    <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
+static_assert(EMISSION_SPEED_FACTOR_V2 <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
+
+/* Height to swap to EMISSION_SPEED_FACTOR_V2 at */
+const uint64_t EMISSION_SPEED_FACTOR_V2_HEIGHT               = 120000;
 
 /* Premine amount */
 const uint64_t GENESIS_BLOCK_REWARD                          = UINT64_C(0);
