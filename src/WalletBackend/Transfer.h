@@ -44,7 +44,8 @@ namespace SendTransaction
         const std::vector<std::string> addressesToTakeFrom,
         std::string changeAddress,
         const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets);
+        const std::shared_ptr<SubWallets> subWallets,
+        const uint64_t unlockTime);
 
     std::vector<WalletTypes::TransactionDestination> setupDestinations(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
@@ -67,8 +68,6 @@ namespace SendTransaction
         CryptoNote::Transaction tx,
         const std::vector<WalletTypes::ObscuredInput> inputsAndFakes,
         const std::vector<Crypto::SecretKey> tmpSecretKeys);
-
-    std::vector<uint64_t> splitAmountIntoDenominations(uint64_t amount);
 
     std::vector<CryptoNote::TransactionInput> keyInputToTransactionInput(
         const std::vector<CryptoNote::KeyInput> keyInputs);
@@ -105,7 +104,8 @@ namespace SendTransaction
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
         const std::vector<WalletTypes::TransactionDestination> destinations,
-        const std::shared_ptr<SubWallets> subWallets);
+        const std::shared_ptr<SubWallets> subWallets,
+        const uint64_t unlockTime);
 
     std::tuple<Error, Crypto::Hash> relayTransaction(
         const CryptoNote::Transaction tx,

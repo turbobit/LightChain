@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2018, The Galaxia Project Developers
 // Copyright (c) 2018, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
@@ -158,7 +159,7 @@ int64_t getEmissionChange(const Currency& currency, IBlockchainCache& segment, u
   auto lastBlocksSizes = segment.getLastBlocksSizes(currency.rewardBlocksWindow(), previousBlockIndex, addGenesisBlock);
   auto blocksSizeMedian = Common::medianValue(lastBlocksSizes);
   if (!currency.getBlockReward(cachedBlock.getBlock().majorVersion, blocksSizeMedian,
-                               cumulativeSize, alreadyGeneratedCoins, cumulativeFee, reward, emissionChange)) {
+                               cumulativeSize, alreadyGeneratedCoins, cumulativeFee, previousBlockIndex+1, reward, emissionChange)) {
     throw std::system_error(make_error_code(error::BlockValidationError::CUMULATIVE_BLOCK_SIZE_TOO_BIG));
   }
 
@@ -577,6 +578,7 @@ bool Core::getWalletSyncData(
     const std::vector<Crypto::Hash> &knownBlockHashes,
     const uint64_t startHeight,
     const uint64_t startTimestamp,
+    const uint64_t blockCount,
     std::vector<WalletTypes::WalletBlockInfo> &walletBlocks) const
 {
     throwIfNotInitialized();
@@ -587,6 +589,12 @@ bool Core::getWalletSyncData(
 
         /* Current height */
         uint64_t currentIndex = mainChain->getTopBlockIndex();
+
+        uint64_t actualBlockCount = std::min(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, blockCount);
+
+        if (actualBlockCount == 0) {
+            actualBlockCount = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+        }
 
         auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
 
@@ -625,19 +633,16 @@ bool Core::getWalletSyncData(
         /* Difference between the start and end */
         uint64_t blockDifference = currentIndex - startIndex;
 
-        /* Sync BLOCKS_SYNCHRONIZING_DEFAULT_COUNT or the amount of blocks between
+        /* Sync actualBlockCount or the amount of blocks between
            start and end, whichever is smaller */
-        uint64_t endIndex = std::min(
-            static_cast<uint64_t>(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT),
-            blockDifference + 1
-        ) + startIndex;
+        uint64_t endIndex = std::min(actualBlockCount, blockDifference + 1) + startIndex;
 
-        /* MAYBE THE DAMN THING CAN WORK */
         logger(Logging::DEBUGGING)
             << "\n\n"
             << "\n============================================="
             << "\n========= GetWalletSyncData summary ========="
             << "\n* Known block hashes size: " << knownBlockHashes.size()
+            << "\n* Blocks requested: " << actualBlockCount
             << "\n* Start height: " << startHeight
             << "\n* Start timestamp: " << startTimestamp
             << "\n* Current index: " << currentIndex
@@ -863,6 +868,18 @@ std::string Core::getPaymentIDFromExtra(const std::vector<uint8_t> &extra)
     return std::string();
 }
 
+std::optional<BinaryArray> Core::getTransaction(const Crypto::Hash& hash) const {
+    throwIfNotInitialized();
+    auto segment = findSegmentContainingTransaction(hash);
+    if(segment != nullptr) {
+        return segment->getRawTransactions({hash})[0];
+    } else if(transactionPool->checkIfTransactionPresent(hash)) {
+        return transactionPool->getTransaction(hash).getTransactionBinaryArray();
+    } else {
+        return std::nullopt;
+    }
+}
+
 void Core::getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<BinaryArray>& transactions,
                            std::vector<Crypto::Hash>& missedHashes) const {
   assert(!chainsLeaves.empty());
@@ -991,8 +1008,33 @@ std::error_code Core::addBlock(const CachedBlock& cachedBlock, RawBlock&& rawBlo
     return error::BlockValidationError::CUMULATIVE_BLOCK_SIZE_TOO_BIG;
   }
 
-  uint64_t minerReward = 0;
-  auto blockValidationResult = validateBlock(cachedBlock, cache, minerReward);
+  uint64_t cumulativeFee = 0;
+
+  for (const auto& transaction : transactions) {
+    uint64_t fee = 0;
+    auto transactionValidationResult = validateTransaction(transaction, validatorState, cache, fee, previousBlockIndex);
+    if (transactionValidationResult) {
+      logger(Logging::DEBUGGING) << "Failed to validate transaction " << transaction.getTransactionHash() << ": " << transactionValidationResult.message();
+      return transactionValidationResult;
+    }
+
+    cumulativeFee += fee;
+  }
+
+  uint64_t reward = 0;
+  int64_t emissionChange = 0;
+  auto alreadyGeneratedCoins = cache->getAlreadyGeneratedCoins(previousBlockIndex);
+  auto lastBlocksSizes = cache->getLastBlocksSizes(currency.rewardBlocksWindow(), previousBlockIndex, addGenesisBlock);
+  auto blocksSizeMedian = Common::medianValue(lastBlocksSizes);
+
+  if (!currency.getBlockReward(cachedBlock.getBlock().majorVersion, blocksSizeMedian,
+                               cumulativeBlockSize, alreadyGeneratedCoins, cumulativeFee, cachedBlock.getBlockIndex(), reward, emissionChange)) {
+    logger(Logging::DEBUGGING) << "Block " << blockStr << " has too big cumulative size";
+    return error::BlockValidationError::CUMULATIVE_BLOCK_SIZE_TOO_BIG;
+  }
+
+  auto blockValidationResult = validateBlock(cachedBlock, cache, reward);
+
   if (blockValidationResult) {
     logger(Logging::DEBUGGING) << "Failed to validate block " << blockStr << ": " << blockValidationResult.message();
     return blockValidationResult;
@@ -1025,37 +1067,6 @@ std::error_code Core::addBlock(const CachedBlock& cachedBlock, RawBlock&& rawBlo
       logger(Logging::DEBUGGING) << error;
       return error::TransactionValidationError::INVALID_MIXIN;
     }
-  }
-
-  uint64_t cumulativeFee = 0;
-
-  for (const auto& transaction : transactions) {
-    uint64_t fee = 0;
-    auto transactionValidationResult = validateTransaction(transaction, validatorState, cache, fee, previousBlockIndex);
-    if (transactionValidationResult) {
-      logger(Logging::DEBUGGING) << "Failed to validate transaction " << transaction.getTransactionHash() << ": " << transactionValidationResult.message();
-      return transactionValidationResult;
-    }
-
-    cumulativeFee += fee;
-  }
-
-  uint64_t reward = 0;
-  int64_t emissionChange = 0;
-  auto alreadyGeneratedCoins = cache->getAlreadyGeneratedCoins(previousBlockIndex);
-  auto lastBlocksSizes = cache->getLastBlocksSizes(currency.rewardBlocksWindow(), previousBlockIndex, addGenesisBlock);
-  auto blocksSizeMedian = Common::medianValue(lastBlocksSizes);
-
-  if (!currency.getBlockReward(cachedBlock.getBlock().majorVersion, blocksSizeMedian,
-                               cumulativeBlockSize, alreadyGeneratedCoins, cumulativeFee, reward, emissionChange)) {
-    logger(Logging::DEBUGGING) << "Block " << blockStr << " has too big cumulative size";
-    return error::BlockValidationError::CUMULATIVE_BLOCK_SIZE_TOO_BIG;
-  }
-
-  if (minerReward != reward) {
-    logger(Logging::DEBUGGING) << "Block reward mismatch for block " << blockStr
-                             << ". Expected reward: " << reward << ", got reward: " << minerReward;
-    return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
   }
 
   if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex())) {
@@ -1375,7 +1386,7 @@ bool Core::getGlobalIndexesForRange(
                 getBinaryArrayHash(toBinaryArray(block.baseTransaction))
             );
         }
-        
+
         indexes = mainChain->getGlobalIndexes(transactionHashes);
 
         return true;
@@ -1430,6 +1441,15 @@ bool Core::isTransactionValidForPool(const CachedTransaction& cachedTransaction,
 
   if (!success)
   {
+      return false;
+  }
+
+  if (cachedTransaction.getTransaction().extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
+  {
+      logger(Logging::TRACE) << "Not adding transaction "
+                             << cachedTransaction.getTransactionHash()
+                             << " to pool, extra too large.";
+
       return false;
   }
 
@@ -1607,7 +1627,7 @@ bool Core::getBlockTemplate(BlockTemplate& b, const AccountPublicAddress& adr, c
 
   size_t transactionsSize;
   uint64_t fee;
-  fillBlockTemplate(b, medianSize, currency.maxBlockCumulativeSize(height), transactionsSize, fee);
+  fillBlockTemplate(b, medianSize, currency.maxBlockCumulativeSize(height), height, transactionsSize, fee);
 
   /*
      two-phase miner transaction generation: we don't know exact block size until we prepare block, but we don't know
@@ -1616,8 +1636,18 @@ bool Core::getBlockTemplate(BlockTemplate& b, const AccountPublicAddress& adr, c
      expected block size
   */
   // make blocks coin-base tx looks close to real coinbase tx to get truthful blob size
-  bool r = currency.constructMinerTx(b.majorVersion, height, medianSize, alreadyGeneratedCoins, transactionsSize, fee, adr,
-                                     b.baseTransaction, extraNonce, 11);
+  bool r = currency.constructMinerTx(
+    b.majorVersion,
+    height,
+    medianSize,
+    alreadyGeneratedCoins,
+    transactionsSize,
+    fee,
+    adr,
+    b.baseTransaction,
+    extraNonce
+  );
+
   if (!r) {
     logger(Logging::ERROR, Logging::BRIGHT_RED) << "Failed to construct miner tx, first chance";
     return false;
@@ -1626,8 +1656,18 @@ bool Core::getBlockTemplate(BlockTemplate& b, const AccountPublicAddress& adr, c
   size_t cumulativeSize = transactionsSize + getObjectBinarySize(b.baseTransaction);
   const size_t TRIES_COUNT = 10;
   for (size_t tryCount = 0; tryCount < TRIES_COUNT; ++tryCount) {
-    r = currency.constructMinerTx(b.majorVersion, height, medianSize, alreadyGeneratedCoins, cumulativeSize, fee, adr,
-                                  b.baseTransaction, extraNonce, 11);
+    r = currency.constructMinerTx(
+        b.majorVersion,
+        height,
+        medianSize,
+        alreadyGeneratedCoins,
+        cumulativeSize,
+        fee,
+        adr,
+        b.baseTransaction,
+        extraNonce
+    );
+
     if (!r) {
       logger(Logging::ERROR, Logging::BRIGHT_RED) << "Failed to construct miner tx, second chance";
       return false;
@@ -1780,12 +1820,13 @@ auto error = validateSemantic(transaction, fee, blockIndex);
           return error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
         }
 
-        std::vector<const Crypto::PublicKey*> outputKeyPointers;
-        outputKeyPointers.reserve(outputKeys.size());
-        std::for_each(outputKeys.begin(), outputKeys.end(), [&outputKeyPointers] (const Crypto::PublicKey& key) { outputKeyPointers.push_back(&key); });
-        if (!Crypto::check_ring_signature(cachedTransaction.getTransactionPrefixHash(), in.keyImage, outputKeyPointers.data(),
-                                          outputKeyPointers.size(), transaction.signatures[inputIndex].data(),
-                                          blockIndex > parameters::KEY_IMAGE_CHECKING_BLOCK_INDEX)) {
+        if (blockIndex >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT
+            && outputKeys.size() != cachedTransaction.getTransaction().signatures[inputIndex].size())
+        {
+          return error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
+        }
+
+        if (!Crypto::crypto_ops::checkRingSignature(cachedTransaction.getTransactionPrefixHash(), in.keyImage, outputKeys, transaction.signatures[inputIndex])) {
           return error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
         }
       }
@@ -1804,6 +1845,16 @@ auto error = validateSemantic(transaction, fee, blockIndex);
 std::error_code Core::validateSemantic(const Transaction& transaction, uint64_t& fee, uint32_t blockIndex) {
   if (transaction.inputs.empty()) {
     return error::TransactionValidationError::EMPTY_INPUTS;
+  }
+
+  /* Small buffer until enforcing - helps clear out tx pool with old, previously
+     valid transactions */
+  if (blockIndex >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2_HEIGHT + CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
+  {
+      if (transaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
+      {
+          return error::TransactionValidationError::EXTRA_TOO_LARGE;
+      }
   }
 
   uint64_t summaryOutputAmount = 0;
@@ -1851,10 +1902,10 @@ std::error_code Core::validateSemantic(const Transaction& transaction, uint64_t&
 
       // outputIndexes are packed here, first is absolute, others are offsets to previous,
       // so first can be zero, others can't
-  // Fix discovered by Monero Lab and suggested by "fluffypony" (bitcointalk.org)
-  if (!(scalarmultKey(in.keyImage, L) == I) && blockIndex > parameters::KEY_IMAGE_CHECKING_BLOCK_INDEX) {
-    return error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
-  }
+      // Fix discovered by Monero Lab and suggested by "fluffypony" (bitcointalk.org)
+      if (!(scalarmultKey(in.keyImage, L) == I)) {
+        return error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
+      }
 
       if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0) != std::end(in.outputIndexes)) {
         return error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
@@ -1901,79 +1952,201 @@ std::vector<Crypto::Hash> CryptoNote::Core::getBlockHashes(uint32_t startBlockIn
   return chainsLeaves[0]->getBlockHashes(startBlockIndex, maxCount);
 }
 
-std::error_code Core::validateBlock(const CachedBlock& cachedBlock, IBlockchainCache* cache, uint64_t& minerReward) {
-  const auto& block = cachedBlock.getBlock();
-  auto previousBlockIndex = cache->getBlockIndex(block.previousBlockHash);
-  // assert(block.previousBlockHash == cache->getBlockHash(previousBlockIndex));
+std::error_code Core::validateBlock(
+    const CachedBlock& cachedBlock,
+    IBlockchainCache* cache,
+    const uint64_t expectedBlockReward)
+{
+    const auto& block = cachedBlock.getBlock();
+    auto previousBlockIndex = cache->getBlockIndex(block.previousBlockHash);
 
-  minerReward = 0;
-
-  if (upgradeManager->getBlockMajorVersion(cachedBlock.getBlockIndex()) != block.majorVersion) {
-    return error::BlockValidationError::WRONG_VERSION;
-  }
-
-  if (block.majorVersion >= BLOCK_MAJOR_VERSION_2) {
-    if (block.majorVersion == BLOCK_MAJOR_VERSION_2 && block.parentBlock.majorVersion > BLOCK_MAJOR_VERSION_1) {
-      logger(Logging::ERROR, Logging::BRIGHT_RED) << "Parent block of block " << cachedBlock.getBlockHash() << " has wrong major version: "
-                                << static_cast<int>(block.parentBlock.majorVersion) << ", at index " << cachedBlock.getBlockIndex()
-                                << " expected version is " << static_cast<int>(BLOCK_MAJOR_VERSION_1);
-      return error::BlockValidationError::PARENT_BLOCK_WRONG_VERSION;
+    if (upgradeManager->getBlockMajorVersion(cachedBlock.getBlockIndex()) != block.majorVersion)
+    {
+        return error::BlockValidationError::WRONG_VERSION;
     }
 
-    if (cachedBlock.getParentBlockBinaryArray(false).size() > 2048) {
-      return error::BlockValidationError::PARENT_BLOCK_SIZE_TOO_BIG;
-    }
-  }
+    if (block.majorVersion >= BLOCK_MAJOR_VERSION_2)
+    {
+        if (block.majorVersion == BLOCK_MAJOR_VERSION_2 && block.parentBlock.majorVersion > BLOCK_MAJOR_VERSION_1)
+        {
+            logger(Logging::ERROR, Logging::BRIGHT_RED)
+                << "Parent block of block " << cachedBlock.getBlockHash() << " has wrong major version: "
+                << static_cast<int>(block.parentBlock.majorVersion) << ", at index " << cachedBlock.getBlockIndex()
+                << " expected version is " << static_cast<int>(BLOCK_MAJOR_VERSION_1);
 
-  if (block.timestamp > getAdjustedTime() + currency.blockFutureTimeLimit(previousBlockIndex+1)) {
-    return error::BlockValidationError::TIMESTAMP_TOO_FAR_IN_FUTURE;
-  }
+            return error::BlockValidationError::PARENT_BLOCK_WRONG_VERSION;
+        }
 
-  auto timestamps = cache->getLastTimestamps(currency.timestampCheckWindow(previousBlockIndex+1), previousBlockIndex, addGenesisBlock);
-  if (timestamps.size() >= currency.timestampCheckWindow(previousBlockIndex+1)) {
-    auto median_ts = Common::medianValue(timestamps);
-    if (block.timestamp < median_ts) {
-      return error::BlockValidationError::TIMESTAMP_TOO_FAR_IN_PAST;
-    }
-  }
-
-  if (block.baseTransaction.inputs.size() != 1) {
-    return error::TransactionValidationError::INPUT_WRONG_COUNT;
-  }
-
-  if (block.baseTransaction.inputs[0].type() != typeid(BaseInput)) {
-    return error::TransactionValidationError::INPUT_UNEXPECTED_TYPE;
-  }
-
-  if (boost::get<BaseInput>(block.baseTransaction.inputs[0]).blockIndex != previousBlockIndex + 1) {
-    return error::TransactionValidationError::BASE_INPUT_WRONG_BLOCK_INDEX;
-  }
-
-  if (!(block.baseTransaction.unlockTime == previousBlockIndex + 1 + currency.minedMoneyUnlockWindow())) {
-    return error::TransactionValidationError::WRONG_TRANSACTION_UNLOCK_TIME;
-  }
-
-  for (const auto& output : block.baseTransaction.outputs) {
-    if (output.amount == 0) {
-      return error::TransactionValidationError::OUTPUT_ZERO_AMOUNT;
+        if (cachedBlock.getParentBlockBinaryArray(false).size() > 2048)
+        {
+            return error::BlockValidationError::PARENT_BLOCK_SIZE_TOO_BIG;
+        }
     }
 
-    if (output.target.type() == typeid(KeyOutput)) {
-      if (!check_key(boost::get<KeyOutput>(output.target).key)) {
-        return error::TransactionValidationError::OUTPUT_INVALID_KEY;
-      }
-    } else {
-      return error::TransactionValidationError::OUTPUT_UNKNOWN_TYPE;
+    if (block.timestamp > getAdjustedTime() + currency.blockFutureTimeLimit(previousBlockIndex+1))
+    {
+        return error::BlockValidationError::TIMESTAMP_TOO_FAR_IN_FUTURE;
     }
 
-    if (std::numeric_limits<uint64_t>::max() - output.amount < minerReward) {
-      return error::TransactionValidationError::OUTPUTS_AMOUNT_OVERFLOW;
+    auto timestamps = cache->getLastTimestamps(currency.timestampCheckWindow(previousBlockIndex+1), previousBlockIndex, addGenesisBlock);
+
+    if (timestamps.size() >= currency.timestampCheckWindow(previousBlockIndex+1))
+    {
+        auto median_ts = Common::medianValue(timestamps);
+        if (block.timestamp < median_ts)
+        {
+            return error::BlockValidationError::TIMESTAMP_TOO_FAR_IN_PAST;
+        }
     }
 
-    minerReward += output.amount;
-  }
+    if (block.baseTransaction.inputs.size() != 1)
+    {
+        return error::TransactionValidationError::INPUT_WRONG_COUNT;
+    }
 
-  return error::BlockValidationError::VALIDATION_SUCCESS;
+    if (block.baseTransaction.inputs[0].type() != typeid(BaseInput))
+    {
+        return error::TransactionValidationError::INPUT_UNEXPECTED_TYPE;
+    }
+
+    if (boost::get<BaseInput>(block.baseTransaction.inputs[0]).blockIndex != previousBlockIndex + 1)
+    {
+        return error::TransactionValidationError::BASE_INPUT_WRONG_BLOCK_INDEX;
+    }
+
+    if (!(block.baseTransaction.unlockTime == previousBlockIndex + 1 + currency.minedMoneyUnlockWindow()))
+    {
+        return error::TransactionValidationError::WRONG_TRANSACTION_UNLOCK_TIME;
+    }
+
+    if (cachedBlock.getBlockIndex() >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT
+      && !block.baseTransaction.signatures.empty())
+    {
+        return error::TransactionValidationError::BASE_INVALID_SIGNATURES_COUNT;
+    }
+
+    double founderRewardPercent = 0;
+
+    /* Apply the founder reward past this height */
+    if (cachedBlock.getBlockIndex() >= CryptoNote::parameters::FOUNDER_REWARD_HEIGHT)
+    {
+        founderRewardPercent = CryptoNote::parameters::FOUNDER_REWARD_PERCENT;
+    }
+
+    uint64_t expectedFounderReward = 0;
+
+    AccountPublicAddress founderAddress;
+
+    /* Don't need this */
+    uint64_t ignore;
+
+    bool isValidFounderAddress = CryptoNote::parseAccountAddressString(
+        ignore,
+        founderAddress,
+        CryptoNote::parameters::FOUNDER_REWARD_ADDRESS
+    );
+
+    /* Bro, what are you doing? */
+    if (!isValidFounderAddress)
+    {
+        logger(Logging::ERROR, Logging::BRIGHT_RED) << "Founder address is not valid!";
+    }
+
+    /* Founder doesn't get a reward if he's an idiot, lol */
+    if (founderRewardPercent > 0 && isValidFounderAddress)
+    {
+        /* Figure out how much of the block should go to the founder */
+        expectedFounderReward = std::round(expectedBlockReward * (founderRewardPercent / 100));
+    }
+
+    uint64_t actualBlockReward = 0;
+    uint64_t actualFounderReward = 0;
+
+    Crypto::KeyDerivation derivation;
+
+    const bool inCheckpoints = checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex());
+
+    /* No need to check if we're using checkpoints */
+    if (!inCheckpoints)
+    {
+        Crypto::SecretKey privateViewKey;
+
+        Common::podFromHex(CryptoNote::parameters::FOUNDER_REWARD_PRIVATE_VIEW_KEY, privateViewKey);
+
+        Crypto::PublicKey pubKey = getPubKeyFromExtra(block.baseTransaction.extra);
+
+        Crypto::generate_key_derivation(pubKey, privateViewKey, derivation);
+    }
+
+    uint64_t outputIndex = 0;
+
+    for (const auto& output : block.baseTransaction.outputs)
+    {
+        if (output.amount == 0)
+        {
+            return error::TransactionValidationError::OUTPUT_ZERO_AMOUNT;
+        }
+
+        Crypto::PublicKey key;
+
+        if (output.target.type() == typeid(KeyOutput))
+        {
+            key = boost::get<KeyOutput>(output.target).key;
+
+            if (!check_key(key))
+            {
+                return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+            }
+        }
+        else
+        {
+            return error::TransactionValidationError::OUTPUT_UNKNOWN_TYPE;
+        }
+
+        if (std::numeric_limits<uint64_t>::max() - output.amount < actualBlockReward)
+        {
+            return error::TransactionValidationError::OUTPUTS_AMOUNT_OVERFLOW;
+        }
+
+        if (!inCheckpoints)
+        {
+            Crypto::PublicKey derivedSpendKey;
+
+            Crypto::underive_public_key(derivation, outputIndex, key, derivedSpendKey);
+
+            if (derivedSpendKey == founderAddress.spendPublicKey)
+            {
+                actualFounderReward += output.amount;
+            }
+        }
+
+        actualBlockReward += output.amount;
+
+        outputIndex++;
+    }
+
+    if (actualBlockReward != expectedBlockReward)
+    {
+        logger(Logging::DEBUGGING) << "Block reward mismatch for block " << cachedBlock.getBlockIndex()
+                                   << ". Expected reward: " << expectedBlockReward 
+                                   << ", got reward: " << actualBlockReward;
+
+        return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+    }
+
+    if (!inCheckpoints)
+    {
+        if (actualFounderReward != expectedFounderReward)
+        {
+            logger(Logging::DEBUGGING) << "Founder reward mismatch for block " << cachedBlock.getBlockIndex()
+                                       << ". Expected founder reward: " << expectedFounderReward
+                                       << ", got reward: " << actualFounderReward;
+
+            return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+        }
+    }
+
+    return error::BlockValidationError::VALIDATION_SUCCESS;
 }
 
 uint64_t CryptoNote::Core::getAdjustedTime() const {
@@ -2359,8 +2532,43 @@ size_t Core::calculateCumulativeBlocksizeLimit(uint32_t height) const {
   return median * 2;
 }
 
-void Core::fillBlockTemplate(BlockTemplate& block, size_t medianSize, size_t maxCumulativeSize,
-                             size_t& transactionsSize, uint64_t& fee) const {
+/* A transaction that is valid at the time it was added to the pool, is not
+   neccessarily valid now, if the network rules changed. */
+bool Core::validateBlockTemplateTransaction(
+    const CachedTransaction &cachedTransaction,
+    const uint64_t blockHeight) const
+{
+    const auto &transaction = cachedTransaction.getTransaction();
+
+    if (transaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
+    {
+        logger(Logging::TRACE) << "Not adding transaction "
+                               << cachedTransaction.getTransactionHash()
+                               << " to block template, extra too large.";
+        return false;
+    }
+
+    auto [success, error] = Mixins::validate({cachedTransaction}, blockHeight);
+
+    if (!success)
+    {
+        logger(Logging::TRACE) << "Not adding transaction "
+                               << cachedTransaction.getTransactionHash()
+                               << " to block template, " << error;
+        return false;
+    }
+
+    return true;
+}
+
+void Core::fillBlockTemplate(
+    BlockTemplate& block,
+    const size_t medianSize,
+    const size_t maxCumulativeSize,
+    const uint64_t height,
+    size_t& transactionsSize,
+    uint64_t& fee) const {
+
   transactionsSize = 0;
   fee = 0;
 
@@ -2378,6 +2586,12 @@ void Core::fillBlockTemplate(BlockTemplate& block, size_t medianSize, size_t max
       continue;
     }
 
+    if (!validateBlockTemplateTransaction(transaction, height))
+    {
+        transactionPool->removeTransaction(transaction.getTransactionHash());
+        continue;
+    }
+
     if (!spentInputsChecker.haveSpentInputs(transaction.getTransaction())) {
       block.transactionHashes.emplace_back(transaction.getTransactionHash());
       transactionsSize += transactionBlobSize;
@@ -2390,6 +2604,12 @@ void Core::fillBlockTemplate(BlockTemplate& block, size_t medianSize, size_t max
 
     if (blockSizeLimit < transactionsSize + cachedTransaction.getTransactionBinaryArray().size()) {
       continue;
+    }
+
+    if (!validateBlockTemplateTransaction(cachedTransaction, height))
+    {
+        transactionPool->removeTransaction(cachedTransaction.getTransactionHash());
+        continue;
     }
 
     if (!spentInputsChecker.haveSpentInputs(cachedTransaction.getTransaction())) {
@@ -2560,13 +2780,13 @@ BlockDetails Core::getBlockDetails(const Crypto::Hash& blockHash) const {
   }
 
   int64_t emissionChange = 0;
-  bool result = currency.getBlockReward(blockDetails.majorVersion, blockDetails.sizeMedian, 0, prevBlockGeneratedCoins, 0, blockDetails.baseReward, emissionChange);
+  bool result = currency.getBlockReward(blockDetails.majorVersion, blockDetails.sizeMedian, 0, prevBlockGeneratedCoins, 0, blockIndex, blockDetails.baseReward, emissionChange);
   if (result) {}
   assert(result);
 
   uint64_t currentReward = 0;
   result = currency.getBlockReward(blockDetails.majorVersion, blockDetails.sizeMedian, blockDetails.transactionsCumulativeSize,
-                                   prevBlockGeneratedCoins, 0, currentReward, emissionChange);
+                                   prevBlockGeneratedCoins, 0, blockIndex, currentReward, emissionChange);
   assert(result);
 
   if (blockDetails.baseReward == 0 && currentReward == 0) {

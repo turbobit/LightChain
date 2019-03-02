@@ -100,19 +100,12 @@ The binaries will be in the `src` folder when you are complete.
 
 ##### Building
 
-<<<<<<< HEAD
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
-- `cd Aeon Classic`
-- `mkdir build && cd $_`
-- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
-  from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
-=======
 - `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
 - `brew install --force cmake boost llvm gcc@8`
 - `export CC=gcc-8`
 - `export CXX=g++-8`
-- `git clone -b master --single-branch https://github.com/turtlecoin/turtlecoin`
-- `cd turtlecoin`
+- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
+- `cd Aeon-Classic`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -163,10 +156,6 @@ The binaries will be in the `src` folder when you are complete.
 - `mkdir build`
 - `cd build`
 - `set PATH="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin";%PATH%`
-<<<<<<< HEAD
-- `cmake -G "Visual Studio 15 2017 Win64" .. -DBOOST_ROOT=C:/local/boost_1_68_0` (Or your boost installed dir.)
-- `MSBuild Aeon-Classic.sln /p:Configuration=Release /m`
-=======
 - `cmake -G "Visual Studio 15 2017 Win64" .. -DBOOST_ROOT=C:/local/boost_1_68_0`
 
 If you have errors on this step about not being able to find the following static libraries, you may need to update your cmake. Open 'Visual Studio Installer' and click 'Update'.
@@ -179,7 +168,7 @@ The binaries will be in the `src/Release` folder when you are complete.
 - `cd Release`
 - `AeonClassicd.exe --version`
 
-#### Raspberry Pi 3 B+
+#### Raspberry Pi 3 B+ (AARCH64/ARM64)
 The following images are known to work. Your operation system image **MUST** be 64 bit.
 
 ##### Known working images
@@ -217,5 +206,6 @@ Hi Aeon Classic contributor, thanks for forking and sending back Pull Requests. 
 // Copyright (c) 2018, The TurtleCoin Developers
 // Copyright (c) 2018, The Aeon Classic Developers
 // 
+//
 // Please see the included LICENSE file for more information.
 ```
