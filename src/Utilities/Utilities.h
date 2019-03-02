@@ -43,6 +43,8 @@ namespace Utilities
 
     bool isSubtractionSafe(int64_t currentValue, uint64_t transferAmount);
 
+    std::vector<uint64_t> splitAmountIntoDenominations(uint64_t amount);
+
     /* Verify that a + b will not overflow when added. */
     /* 2 positive numbers - should always get greater (or equal) when summed. */
     /* Any negative numbers - should always get smaller (or equal) when summed. */

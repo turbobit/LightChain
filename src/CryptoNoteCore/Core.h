@@ -161,7 +161,10 @@ private:
   uint32_t findBlockchainSupplement(const std::vector<Crypto::Hash>& remoteBlockIds) const;
   std::vector<Crypto::Hash> getBlockHashes(uint32_t startBlockIndex, uint32_t maxCount) const;
 
-  std::error_code validateBlock(const CachedBlock& block, IBlockchainCache* cache, uint64_t& minerReward);
+  std::error_code validateBlock(
+    const CachedBlock& block,
+    IBlockchainCache* cache,
+    const uint64_t expectedBlockReward);
 
   uint64_t getAdjustedTime() const;
   void updateMainChainSet();

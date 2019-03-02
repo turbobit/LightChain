@@ -143,8 +143,22 @@ size_t difficultyBlocksCountByBlockVersion(uint8_t blockMajorVersion, uint32_t h
 
   size_t maxBlockCumulativeSize(uint64_t height) const;
 
-  bool constructMinerTx(uint8_t blockMajorVersion, uint32_t height, size_t medianSize, uint64_t alreadyGeneratedCoins, size_t currentBlockSize,
-    uint64_t fee, const AccountPublicAddress& minerAddress, Transaction& tx, const BinaryArray& extraNonce = BinaryArray(), size_t maxOuts = 1) const;
+  std::optional<TransactionOutput> createMinerOutput(
+    uint64_t amount,
+    const AccountPublicAddress& address,
+    const Crypto::SecretKey transactionSecretKey,
+    const uint64_t outputIndex) const;
+
+  bool constructMinerTx(
+    const uint8_t blockMajorVersion,
+    const uint32_t height,
+    const size_t medianSize,
+    const uint64_t alreadyGeneratedCoins,
+    const size_t currentBlockSize,
+    const uint64_t fee,
+    const AccountPublicAddress& minerAddress,
+    Transaction& tx,
+    const BinaryArray& extraNonce = BinaryArray()) const;
 
   bool isFusionTransaction(const Transaction& transaction, uint32_t height) const;
   bool isFusionTransaction(const Transaction& transaction, size_t size, uint32_t height) const;

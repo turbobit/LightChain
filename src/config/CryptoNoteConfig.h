@@ -93,6 +93,18 @@ const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 8;
 
 const uint64_t MINIMUM_FEE                                   = UINT64_C(100);
 
+/* The address for the founder reward to go to */
+const std::string FOUNDER_REWARD_ADDRESS                     = "XwoMCTrgStgbwpVres1cL6KxxkyB2odA25Fa8tUxJjhh7418ziooJArWaLUUCSaCCYQpvYPaDinzYANgmAWhWV1Q21Gy7zcgZ";
+
+/* We need the private view key to verify the reward is actually going to the founder */
+const std::string FOUNDER_REWARD_PRIVATE_VIEW_KEY            = "fdaa43cde94e10e2cadd56bdd07ae8b5abc6d6cffdd33377d74e50b3e8033e02";
+
+/* Percent of the block reward to go to the founder */
+const double      FOUNDER_REWARD_PERCENT                     = 14.99;
+
+/* The height to implement founder rewards */
+const uint64_t    FOUNDER_REWARD_HEIGHT                      = 120000;
+
 /* This section defines our minimum and maximum mixin counts required for transactions */
 const uint64_t MINIMUM_MIXIN_V1                              = 0;
 const uint64_t MAXIMUM_MIXIN_V1                              = 3;

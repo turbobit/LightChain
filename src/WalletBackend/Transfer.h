@@ -69,8 +69,6 @@ namespace SendTransaction
         const std::vector<WalletTypes::ObscuredInput> inputsAndFakes,
         const std::vector<Crypto::SecretKey> tmpSecretKeys);
 
-    std::vector<uint64_t> splitAmountIntoDenominations(uint64_t amount);
-
     std::vector<CryptoNote::TransactionInput> keyInputToTransactionInput(
         const std::vector<CryptoNote::KeyInput> keyInputs);
 

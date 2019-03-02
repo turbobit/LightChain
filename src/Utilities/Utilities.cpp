@@ -199,4 +199,31 @@ uint64_t getCurrentTimestampAdjusted()
     return time - adjust;
 }
 
+/* Split each amount into uniform amounts, e.g.
+   1234567 = 1000000 + 200000 + 30000 + 4000 + 500 + 60 + 7 */
+std::vector<uint64_t> splitAmountIntoDenominations(uint64_t amount)
+{
+    std::vector<uint64_t> splitAmounts;
+
+    uint64_t multiplier = 1;
+
+    while (amount > 0)
+    {
+        uint64_t denomination = multiplier * (amount % 10);
+
+        /* If we have for example, 1010 - we want 1000 + 10,
+           not 1000 + 0 + 10 + 0 */
+        if (denomination != 0)
+        {
+            splitAmounts.push_back(denomination);
+        }
+
+        amount /= 10;
+
+        multiplier *= 10;
+    }
+
+    return splitAmounts;
+}
+
 } // namespace Utilities
