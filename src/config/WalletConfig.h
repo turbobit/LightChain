@@ -13,7 +13,7 @@ namespace WalletConfig
     const std::string addressPrefix = "X";
 
     /* Your coins 'Ticker', e.g. Monero = XMR, Bitcoin = BTC */
-    const std::string ticker = "XMLC";
+    const std::string ticker = "LCX";
 
     /* The filename to output the CSV to in save_csv */
     const std::string csvFilename = "transactions.csv";
@@ -23,20 +23,20 @@ namespace WalletConfig
     const std::string addressBookFilename = ".addressBook.json";
 
     /* The name of your deamon */
-    const std::string daemonName = "AeonClassicd";
+    const std::string daemonName = "LightChaind";
 
     /* The name to call this wallet */
     const std::string walletName = "zedwallet";
 
     /* The name of service/walletd, the programmatic rpc interface to a
        wallet */
-    const std::string walletdName = "AC-service";
+    const std::string walletdName = "lc-service";
 
     /* The full name of your crypto */
     const std::string coinName = std::string(CryptoNote::CRYPTONOTE_NAME);
 
     /* Where can your users contact you for support? E.g. discord */
-    const std::string contactLink = "http://aeonclassic.org/#chat";
+    const std::string contactLink = "http://lightchain.net/#chat";
 
 
     /* The number of decimals your coin has */

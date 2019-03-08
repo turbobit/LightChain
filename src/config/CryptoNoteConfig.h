@@ -100,7 +100,7 @@ const std::string FOUNDER_REWARD_ADDRESS                     = "XwoMCTrgStgbwpVr
 const std::string FOUNDER_REWARD_PRIVATE_VIEW_KEY            = "fdaa43cde94e10e2cadd56bdd07ae8b5abc6d6cffdd33377d74e50b3e8033e02";
 
 /* Percent of the block reward to go to the founder */
-const double      FOUNDER_REWARD_PERCENT                     = 14.99;
+const double      FOUNDER_REWARD_PERCENT                     = 15.99;
 
 /* The height to implement founder rewards */
 const uint64_t    FOUNDER_REWARD_HEIGHT                      = 120000;
@@ -215,7 +215,7 @@ const char     P2P_NET_DATA_FILENAME[]                       = "p2pstate.bin";
 const char     MINER_CONFIG_FILE_NAME[]                      = "miner_conf.json";
 } // parameters
 
-const char     CRYPTONOTE_NAME[]                             = "Aeon-Classic";
+const char     CRYPTONOTE_NAME[]                             = "LightChain";
 
 const uint8_t  TRANSACTION_VERSION_1                         =  1;
 const uint8_t  TRANSACTION_VERSION_2                         =  2;

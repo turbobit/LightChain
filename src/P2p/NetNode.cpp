@@ -698,7 +698,7 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
       }
 
       if (just_take_peerlist) {
-        logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN) << ctx << "CONNECTION HANDSHAKED OK AND CLOSED.";
+        logger(Logging::DEBUGGING, Logging::BRIGHT_CYAN) << ctx << "CONNECTION HANDSHAKED OK AND CLOSED.";
         return true;
       }
 
@@ -1145,7 +1145,7 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
     get_local_node_data(rsp.node_data);
     m_payload_handler.get_payload_sync_data(rsp.payload_data);
 
-    logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN) << "COMMAND_HANDSHAKE";
+    logger(Logging::DEBUGGING, Logging::BRIGHT_CYAN) << "COMMAND_HANDSHAKE";
     return 1;
   }
   //-----------------------------------------------------------------------------------
