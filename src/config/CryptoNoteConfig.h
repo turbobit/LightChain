@@ -270,8 +270,8 @@ const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE          = 10;
 const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES               = 100;
 const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT     = 2;
 
-const char     LATEST_VERSION_URL[]                          = "http://aeonclassic.org/#releases";
-const std::string LICENSE_URL                                = "https://github.com/Biolith/Aeon-Classic/blob/master/LICENSE";
+const char     LATEST_VERSION_URL[]                          = "http://lightchain.net/#releases";
+const std::string LICENSE_URL                                = "https://github.com/lcxnetwork/LightChain/blob/master/LICENSE";
 const static   boost::uuids::uuid CRYPTONOTE_NETWORK         =
 {
     {  0x41, 0x65, 0x6f, 0x6e, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x69, 0x63, 0xa4, 0xb6, 0xc1, 0x43, 0xe9  }
