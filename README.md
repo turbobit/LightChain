@@ -1,6 +1,6 @@
 ### Installing
 
-We offer binary images of the latest releases here: https://github.com/Biolith/Aeon-Classic/releases
+We offer binary images of the latest releases here: https://github.com/lcxnetwork/LightChain/releases
 
 If you would like to compile yourself, read on.
 
@@ -27,8 +27,8 @@ If you are using Clang, you will need Clang 6.0 or higher. You will also need li
 - `sudo pip install cmake`
 - `export CC=gcc-8`
 - `export CXX=g++-8`
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
-- `cd Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -37,7 +37,7 @@ If you are using Clang, you will need Clang 6.0 or higher. You will also need li
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 ##### Ubuntu, using Clang
 
@@ -61,7 +61,7 @@ You need to modify the below command for your version of ubuntu - see https://ap
 - `sudo pip install cmake`
 - `export CC=clang-6.0`
 - `export CXX=clang++-6.0`
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
 - `cd Aeon Classic`
 - `mkdir build`
 - `cd build`
@@ -71,7 +71,7 @@ You need to modify the below command for your version of ubuntu - see https://ap
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 ##### Generic Linux
 
@@ -80,7 +80,7 @@ Ensure you have the dependencies listed above.
 If you want to use clang, ensure you set the environment variables `CC` and `CXX`.
 See the ubuntu instructions for an example.
 
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
 - `cd Aeon Classic`
 - `mkdir build`
 - `cd build`
@@ -90,7 +90,7 @@ See the ubuntu instructions for an example.
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 #### OSX/Apple, using GCC
 
@@ -104,8 +104,8 @@ The binaries will be in the `src` folder when you are complete.
 - `brew install --force cmake boost llvm gcc@8`
 - `export CC=gcc-8`
 - `export CXX=g++-8`
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
-- `cd Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -114,7 +114,7 @@ The binaries will be in the `src` folder when you are complete.
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 #### OSX/Apple, using Clang
 
@@ -128,8 +128,8 @@ The binaries will be in the `src` folder when you are complete.
 - `brew install --force cmake boost llvm`
 - `export CC=/usr/local/opt/llvm/bin/clang`
 - `export CXX=/usr/local/opt/llvm/bin/clang++`
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
-- `cd Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -138,7 +138,7 @@ The binaries will be in the `src` folder when you are complete.
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 
 #### Windows
@@ -160,13 +160,13 @@ The binaries will be in the `src` folder when you are complete.
 
 If you have errors on this step about not being able to find the following static libraries, you may need to update your cmake. Open 'Visual Studio Installer' and click 'Update'.
 
-- `MSBuild Aeon-Classic.sln /p:Configuration=Release /m`
+- `MSBuild LightChain.sln /p:Configuration=Release /m`
 
 The binaries will be in the `src/Release` folder when you are complete.
 
 - `cd src`
 - `cd Release`
-- `AeonClassicd.exe --version`
+- `LightChaind.exe --version`
 
 #### Raspberry Pi 3 B+ (AARCH64/ARM64)
 The following images are known to work. Your operation system image **MUST** be 64 bit.
@@ -181,8 +181,8 @@ Once you have a 64 bit image installed, setup proceeds the same as any Linux dis
 
 ##### Building
 
-- `git clone -b master --single-branch https://github.com/Biolith/Aeon-Classic`
-- `cd Aeon-Classic`
+- `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -191,20 +191,20 @@ Once you have a 64 bit image installed, setup proceeds the same as any Linux dis
 The binaries will be in the `src` folder when you are complete.
 
 - `cd src`
-- `./AeonClassicd --version`
+- `./LightChaind --version`
 
 #### Thanks
-Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Community, Aeon Classic Community
+Cryptonote Developers, Bytecoin Developers, Monero Developers, TurtleCoin Developers, Forknote Project, TurtleCoin Community, LightChain Community
 
 ### Copypasta for license when editing files
 
-Hi Aeon Classic contributor, thanks for forking and sending back Pull Requests. Extensive docs about contributing are in the works or elsewhere. For now this is the bit we need to get into all the files we touch. Please add it to the top of the files, see [src/CryptoNoteConfig.h](https://github.com/Biolith/Aeon-Classic/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
+Hi LightChain contributor, thanks for forking and sending back Pull Requests. Extensive docs about contributing are in the works or elsewhere. For now this is the bit we need to get into all the files we touch. Please add it to the top of the files, see [src/CryptoNoteConfig.h](https://github.com/lcxnetwork/LightChain/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
 
 ```
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018, The Aeon Classic Developers
+// Copyright (c) 2018, The LightChain Developers
 // 
 //
 // Please see the included LICENSE file for more information.
