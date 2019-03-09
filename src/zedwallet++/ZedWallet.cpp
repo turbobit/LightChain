@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 
         if (quit)
         {
-            std::cout << "Thanks for stopping by..." << std::endl;
+            std::cout << "Thanks for using the LightChain Network..." << std::endl;
             return 0;
         }
 
