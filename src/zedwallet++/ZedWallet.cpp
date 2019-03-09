@@ -149,5 +149,5 @@ int main(int argc, char **argv)
         cleanup(txMonitorThread, ctrlCWatcher, stop, txMonitor);
     }
         
-    std::cout << "Thanks for stopping by..." << std::endl;
+    std::cout << "Thanks for using LightChain..." << std::endl;
 }
