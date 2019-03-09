@@ -62,7 +62,7 @@ You need to modify the below command for your version of ubuntu - see https://ap
 - `export CC=clang-6.0`
 - `export CXX=clang++-6.0`
 - `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
-- `cd Aeon Classic`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -81,7 +81,7 @@ If you want to use clang, ensure you set the environment variables `CC` and `CXX
 See the ubuntu instructions for an example.
 
 - `git clone -b master --single-branch https://github.com/lcxnetwork/LightChain`
-- `cd Aeon Classic`
+- `cd LightChain`
 - `mkdir build`
 - `cd build`
 - `cmake ..`
@@ -152,7 +152,7 @@ The binaries will be in the `src` folder when you are complete.
 ##### Building
 
 - From the start menu, open 'x64 Native Tools Command Prompt for vs2017'.
-- `cd <your_Aeon Classic_directory>`
+- `cd <your_LightChain_directory>`
 - `mkdir build`
 - `cd build`
 - `set PATH="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin";%PATH%`
