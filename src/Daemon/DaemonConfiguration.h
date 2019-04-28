@@ -50,6 +50,7 @@ namespace DaemonConfig {
     std::string rpcInterface;
     std::string p2pInterface;
     std::string checkPoints;
+    std::string validateString;
 
     std::vector<std::string> peers;
     std::vector<std::string> priorityNodes;
