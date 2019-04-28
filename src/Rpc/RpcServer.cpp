@@ -248,6 +248,10 @@ bool RpcServer::setFeeAddress(const std::string fee_address) {
   return true;
 }
 
+void RpcServer::setValidateString(const std::string &validateString) {
+    m_validateString = validateString;
+}
+
 bool RpcServer::setFeeAmount(const uint32_t fee_amount) {
   m_fee_amount = fee_amount;
   return true;
@@ -602,6 +606,11 @@ bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RP
   res.version = PROJECT_VERSION;
   res.status = CORE_RPC_STATUS_OK;
   res.start_time = (uint64_t)m_core.getStartTime();
+
+  if (m_validateString != "") {
+      res.validate = m_validateString;
+  }
+
   return true;
 }
 

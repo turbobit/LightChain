@@ -8,6 +8,8 @@
 #include <fstream>
 #include <sstream>
 
+#include <regex>
+
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
 #include <Logging/ILogger.h>
@@ -54,7 +56,8 @@ namespace DaemonConfig{
       ("enable-cors", "Adds header 'Access-Control-Allow-Origin' to the RPC responses using the <domain>. Uses the value specified as the domain. Use * for all.",
         cxxopts::value<std::vector<std::string>>(), "<domain>")
       ("fee-address", "Sets the convenience charge <address> for light wallets that use the daemon", cxxopts::value<std::string>(), "<address>")
-      ("fee-amount", "Sets the convenience charge amount for light wallets that use the daemon", cxxopts::value<int>()->default_value("0"), "#");
+      ("fee-amount", "Sets the convenience charge amount for light wallets that use the daemon", cxxopts::value<int>()->default_value("0"), "#")
+      ("validate", "Sets the sensei node validation string", cxxopts::value<std::string>(), "<hash>");
 
     options.add_options("Network")
       ("allow-local-ip", "Allow the local IP to be added to the peer list", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
@@ -239,6 +242,19 @@ namespace DaemonConfig{
       if (cli.count("fee-amount") > 0)
       {
         config.feeAmount = cli["fee-amount"].as<int>();
+      }
+
+      if (cli.count("validate") > 0)
+      {
+          std::regex hexRegex("[a-z0-9]{32}");
+
+          config.validateString = cli["validate"].as<std::string>();
+
+          if (!std::regex_match(config.validateString, hexRegex))
+          {
+              std::cout << "Invalid validation string! Should be 32 char, lower case, hex." << std::endl;
+              exit(1);
+          }
       }
 
       if (config.help) // Do we want to display the help message?

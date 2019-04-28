@@ -30,6 +30,7 @@ public:
   bool enableCors(const std::vector<std::string>  domains);
   bool setFeeAddress(const std::string fee_address);
   bool setFeeAmount(const uint32_t fee_amount);
+  void setValidateString(const std::string &validateString);
   std::vector<std::string> getCorsDomains();
 
   bool on_get_block_headers_range(const COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request& req, COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response& res, JsonRpc::JsonRpcError& error_resp);
@@ -106,6 +107,7 @@ private:
   ICryptoNoteProtocolHandler& m_protocol;
   std::vector<std::string> m_cors_domains;
   std::string m_fee_address;
+  std::string m_validateString;
   uint32_t m_fee_amount;
 };
 
