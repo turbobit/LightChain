@@ -319,6 +319,7 @@ int main(int argc, char* argv[])
     logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
     rpcServer.setFeeAddress(config.feeAddress);
     rpcServer.setFeeAmount(config.feeAmount);
+    rpcServer.setValidateString(config.validateString);
     rpcServer.enableCors(config.enableCors);
     rpcServer.start(config.rpcInterface, config.rpcPort);
     logger(INFO) << "Core rpc server started ok";

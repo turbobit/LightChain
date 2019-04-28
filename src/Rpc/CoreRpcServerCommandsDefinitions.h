@@ -337,6 +337,7 @@ struct COMMAND_RPC_GET_INFO {
     uint64_t start_time;
     bool synced;
     bool testnet;
+    std::string validate;
 
     void serialize(ISerializer &s) {
       KV_MEMBER(status)
@@ -360,6 +361,10 @@ struct COMMAND_RPC_GET_INFO {
       KV_MEMBER(synced)
       KV_MEMBER(testnet)
       KV_MEMBER(version)
+
+      if (validate != "") {
+          KV_MEMBER(validate);
+      }
     }
   };
 };
